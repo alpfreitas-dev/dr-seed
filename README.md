@@ -34,10 +34,24 @@ bash dr-restore.sh restaurar       # REAL: restaura tudo no lugar (servidor novo
 **Faz:** instala `restic` + `sshpass`, conecta no backup com as suas senhas,
 restaura os arquivos (`/opt/*`, `/etc/*`, `/root/*`, `/home/*`).
 
-**Não faz** (isso é a Camada 1 — o Ankh em modo-recuperação):
-reimportar os bancos (`.sql` em `/opt/horus-backup/staging/`), instalar pacotes do
-sistema, recriar serviços systemd, subir Docker/pm2, DNS/certbot. O seed deixa o
-`/opt/ankh` restaurado e pronto para assumir daqui.
+**Não faz** (isso é a Camada 1 — `recover.sh`):
+reimportar os bancos, instalar pacotes do sistema, recriar serviços systemd, subir
+Docker/pm2, DNS/certbot.
+
+## Camada 1 — `recover.sh` (depois que os arquivos voltaram)
+
+```bash
+bash recover.sh check       # relatório: o que existe/falta (não muda nada) — seguro sempre
+bash recover.sh provision   # repos + pacotes (docker, node, certbot, pm2…)
+bash recover.sh dbrestore   # reimporta os dumps .sql nos bancos vazios
+bash recover.sh services    # daemon-reload + systemd + docker compose + pm2 + nginx
+bash recover.sh all         # tudo, com confirmação
+```
+
+Manifesto declarativo no topo do script (pacotes, serviços, dirs) — mantenha-o
+quando um serviço novo entrar na plataforma. Cada passo verifica seu resultado.
+`check` é só-leitura; os demais são destrutivos → só num servidor NOVO/cru.
+Depois: apontar o DNS pro IP novo e `certbot --nginx` se os certs não vieram do backup.
 
 ## Segurança
 
