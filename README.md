@@ -53,6 +53,47 @@ quando um serviço novo entrar na plataforma. Cada passo verifica seu resultado.
 `check` é só-leitura; os demais são destrutivos → só num servidor NOVO/cru.
 Depois: apontar o DNS pro IP novo e `certbot --nginx` se os certs não vieram do backup.
 
+## Ensaio (validar a recuperação num servidor descartável)
+
+⚠️ O descartável vai segurar **a joia da coroa**: bancos com dados de cliente, todos os
+segredos e credenciais REAIS (WhatsApp Cloud API, Meta CAPI, Google Ads, Shopify, Guru,
+push, SMTP). Dois cuidados obrigatórios — cada um tem seu script:
+
+**1. Lacrar a rede antes de subir os apps** (`seal-network.sh`)
+
+Se os apps subirem com saída livre e processarem a fila do banco, mandam mensagem pra
+cliente de verdade, disparam push real e poluem os dados de anúncio da produção.
+(Webhooks de *entrada* não são risco: batem no domínio de prod, IP diferente.)
+
+```bash
+touch /root/.dr-drill          # marca este servidor como o do ensaio (as travas exigem)
+bash seal-network.sh open      # saída liberada — para instalar pacotes
+bash recover.sh provision
+bash seal-network.sh seal      # LACRA: só Storage Box + DNS + SSH
+bash seal-network.sh status    # confirma que NÃO alcança a Meta
+bash dr-restore.sh restaurar
+bash recover.sh dbrestore
+bash recover.sh services       # apps sobem lacrados: não alcançam ninguém
+```
+
+**2. Destruir com cuidado no fim** (`teardown.sh`)
+
+Deletar a VM desaloca o disco, mas nem sempre o zera. Sobrescreva antes:
+
+```bash
+bash teardown.sh check   # lista o que será destruído (não apaga)
+bash teardown.sh wipe    # shred nos segredos, drop nos bancos, limpa histórico,
+                         # zera o espaço livre — pede DESTRUIR pra confirmar
+```
+Depois: **delete a VM no painel** e confirme.
+
+**Travas:** os dois scripts se recusam a rodar sem `/root/.dr-drill`, e o `seal-network.sh`
+detecta se está no servidor de produção e aborta. Testado.
+
+**Dimensionamento:** o ensaio cabe em ~16 GB de disco. Com 4 GB de RAM, valide
+`provision` + `dr-restore` + `dbrestore` (a parte que importa) e suba os serviços
+**um de cada vez** — todos juntos não cabem.
+
 ## Segurança
 
 - As senhas são digitadas (nunca exibidas, `read -s`) e **nunca gravadas em disco**.
