@@ -22,6 +22,7 @@ Num servidor novo, como root:
 ```bash
 # 1. baixe este script (ou cole o conteúdo)
 curl -sSLO https://raw.githubusercontent.com/alpfreitas-dev/dr-seed/master/dr-restore.sh
+curl -sSLO https://raw.githubusercontent.com/alpfreitas-dev/dr-seed/master/select-snapshot.py
 
 # 2. rode
 bash dr-restore.sh                 # lista os backups (não altera nada)
@@ -39,6 +40,17 @@ reimportar os bancos, instalar pacotes do sistema, recriar serviços systemd, su
 Docker/pm2, DNS/certbot.
 
 ## Camada 1 — `recover.sh` (depois que os arquivos voltaram)
+
+**Atenção (12/out/2026):** o fluxo completo de reconstrução ainda precisa de revisão
+e ensaio. Não execute `all` automaticamente: o manifesto histórico não contempla
+todos os projetos atuais. Use os inventários `staging/dr-*` e os dumps SQL/SQLite.
+O Ankh não tem um modo de recuperação automática implementado.
+
+O seletor exige um snapshot completo e rejeita os snapshots de sessões Codex e os
+marcados `backup-incomplete`. Os bancos SQLite consistentes ficam no staging;
+`dr-sqlite.json` identifica os destinos originais. Reponha-os apenas com seus
+respectivos serviços parados e sem WAL/SHM antigos. O teste de restauração foi
+adiado por solicitação do André; seleção e cópia SQLite têm testes sintéticos.
 
 ```bash
 bash recover.sh check       # relatório: o que existe/falta (não muda nada) — seguro sempre

@@ -49,6 +49,9 @@ fi
 if ! command -v sshpass >/dev/null 2>&1; then
   echo "  instalando sshpass…"; apt-get install -y -qq sshpass || erro "não instalei o sshpass"
 fi
+if ! command -v python3 >/dev/null 2>&1; then
+  apt-get install -y -qq python3 || erro "não instalei o seletor de snapshots"
+fi
 echo "  restic $(restic version 2>/dev/null | awk '{print $2}') · sshpass ok"
 
 # --- 2. Senhas (do iCloud) — digitadas, nunca gravadas ----------------------
@@ -65,12 +68,13 @@ restic_(){ restic -o sftp.command="$SFTP_CMD" "$@"; }
 
 # --- 3. Conferência: as senhas abrem o backup? (falha cedo) -----------------
 msg "Conectando no backup"
-if ! restic_ snapshots --latest 1 >/dev/null 2>&1; then
+if ! SNAPSHOTS=$(restic_ snapshots --json); then
   erro "não abri o repositório. Senha do restic ERRADA, senha do Storage Box ERRADA, ou sem internet."
 fi
 echo "  ✅ conectado e descriptografado"
-ULT_ID=$(restic_ snapshots --latest 1 --json 2>/dev/null | python3 -c "import json,sys;d=json.load(sys.stdin);print(d[-1]['short_id'])" 2>/dev/null || true)
-ULT_TS=$(restic_ snapshots --latest 1 --json 2>/dev/null | python3 -c "import json,sys;d=json.load(sys.stdin);print(d[-1]['time'][:16])" 2>/dev/null || true)
+SELECTOR="$(dirname "$(readlink -f "$0")")/select-snapshot.py"
+ULT_ID=$(printf '%s' "$SNAPSHOTS" | python3 "$SELECTOR") || erro "nenhum backup completo disponível; não vou usar latest sem filtro"
+ULT_TS=$(printf '%s' "$SNAPSHOTS" | python3 "$SELECTOR" --time) || erro "data do backup inválida"
 echo "  backup mais novo: ${ULT_ID:-?}  (${ULT_TS:-?})"
 
 case "$MODO" in
@@ -87,7 +91,7 @@ EOF
   testar)
     msg "ENSAIO — restaurando o snapshot mais novo em: $ALVO"
     mkdir -p "$ALVO"
-    restic_ restore "${ULT_ID:-latest}" --target "$ALVO"
+    restic_ restore "$ULT_ID" --target "$ALVO"
     echo "  ✅ restaurado em $ALVO (sistema real intacto). Confira e apague quando quiser."
     ;;
 
@@ -96,13 +100,14 @@ EOF
     echo "  ⚠️  Use isto só num servidor NOVO/cru. Vai sobrescrever arquivos existentes."
     read -rp "  Digite RESTAURAR para confirmar: " C
     [ "$C" = "RESTAURAR" ] || erro "cancelado"
-    restic_ restore "${ULT_ID:-latest}" --target "$ALVO"
+    restic_ restore "$ULT_ID" --target "$ALVO"
     msg "Arquivos restaurados"
     cat <<'EOF'
-  PRÓXIMOS PASSOS (Camada 1 — o Ankh assume daqui):
+  PRÓXIMOS PASSOS (reconstrução assistida; não automatizada pelo Ankh):
    • Os arquivos voltaram: /opt/*, /etc/*, /root/*, /home/*
    • Os dumps de banco estão em /opt/horus-backup/staging/*.sql (reimportar com serviço parado)
-   • Suba o Ankh em modo-recuperação para automatizar pacotes, bancos, systemd e serviços.
+   • Recrie os serviços a partir do inventário e reimporte os bancos antes de publicar.
+   • O banco Aton consistente está em staging/aton-live.sqlite; veja dr-sqlite.json.
 EOF
     ;;
 
