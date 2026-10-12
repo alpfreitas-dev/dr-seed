@@ -20,9 +20,10 @@ nunca contém segredo** — pode ser público sem risco (mas mantemos privado).
 Num servidor novo, como root:
 
 ```bash
-# 1. baixe este script (ou cole o conteúdo)
-curl -sSLO https://raw.githubusercontent.com/alpfreitas-dev/dr-seed/master/dr-restore.sh
-curl -sSLO https://raw.githubusercontent.com/alpfreitas-dev/dr-seed/master/select-snapshot.py
+# 1. extraia o kit corrigido e mantenha estes dois arquivos juntos:
+# dr-restore.sh e select-snapshot.py
+# As correções de 12/out foram instaladas no servidor; não assuma que o
+# repositório remoto ou um cofre baixado antes já contenham essa versão.
 
 # 2. rode
 bash dr-restore.sh                 # lista os backups (não altera nada)
