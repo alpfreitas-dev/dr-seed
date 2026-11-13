@@ -25,10 +25,19 @@ set -uo pipefail
 APT_UBUNTU=(nginx restic sshpass zip python3 python3-pip jq curl gnupg ca-certificates)
 DOCKER_PKGS=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin)
 NPM_GLOBAL=(pm2)
-COMPOSE_DIRS=(/opt/alphavip /opt/studio)                 # docker compose up -d
+COMPOSE_DIRS=(/opt/club /opt/studio)                     # docker compose up -d
 PM2_APPS=(horus horus-saas)                              # sobem como usuário ubuntu
 SYSTEMD_UNITS=(thoth ankh thoth-mcp studio-webp.path studio-webp.timer \
                ankh-collector-fast.timer ankh-collector-slow.timer ankh-collector-procs.timer)
+# VP-2026-257 (OK direto do André na VP, 13/11/2026 08:47 UTC): as sessões Claude, os despertadores e os temporizadores
+# da Segurança/VP. 'services' religa, 'check' confere. As sessões sobem pelo /usr/local/sbin/claude-sessao: sem transcript
+# (desastre), começam conversa nova em vez de travar. Login da conta Claude continua manual (André).
+SYSTEMD_UNITS+=(claude-remote-2.service claude-remote-3.service claude-remote-ankh.service claude-remote-aovivo.service claude-remote-clubmkt.service claude-remote-comercial.service claude-remote-dev1.service claude-remote-dev2.service claude-remote-feed.service claude-remote-juridico.service claude-remote-kha.service claude-remote-seguranca.service claude-remote-suporte.service claude-remote-vp.service claude-remote.service \
+               amb-dev1-club.service amb-dev2-club.service \
+               despertador-vp-manha.timer despertador-vp-tarde.timer dev-entregas.timer vigia-falhas.timer \
+               sessoes-esperando.timer observador-licoes.timer verificador-sessoes.timer \
+               registro-acesso-girar-apps.timer registro-acesso-backup.timer \
+               ankh-sla-probe.timer ankh-sla-summary.timer patrulha-seguranca.timer aide-triagem.timer)
 STAGE=/opt/horus-backup/staging                         # dumps .sql do backup
 
 MODO="${1:-check}"
@@ -98,7 +107,7 @@ do_dbrestore(){
   sec "Subindo containers de banco (vazios) antes de importar"
   for d in "${COMPOSE_DIRS[@]}"; do (cd "$d" && docker compose up -d 2>/dev/null) && ok "compose up: $d"; done
   sleep 8   # dá tempo do Postgres/MySQL aceitarem conexão
-  sec "Postgres (studio-db, alphavip-db)"
+  sec "Postgres (studio-db, club-db)"
   for f in "$STAGE"/pg-*.sql; do
     [ -f "$f" ] || continue
     c=$(basename "$f" .sql | sed 's/^pg-//')
