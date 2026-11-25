@@ -38,7 +38,7 @@ SEGREDOS=(/opt/ankh/pki /opt/ankh/data /opt/thoth/data /opt/thoth-mcp/.thoth_cre
           /opt/thoth-mcp/.connector_pass /opt/thoth-mcp/.oauth_store.json
           /opt/horus-backup/restic.env /opt/horus-backup/sb_key
           /root/.ssh /home/ubuntu/.ssh /root/.claude)
-ENVS=(/home/ubuntu/horus/.env /home/ubuntu/horus-saas/.env /opt/alphavip/.env /opt/studio/.env)
+ENVS=(/home/ubuntu/horus/.env /home/ubuntu/horus-saas/.env /opt/club/.env /opt/studio/.env)
 DADOS=(/home/ubuntu/hdrive /home/ubuntu/uploads /opt/horus-backup/staging)
 HIST=(/root/.bash_history /home/ubuntu/.bash_history /root/.mysql_history)
 
@@ -65,7 +65,7 @@ do_wipe(){
   sudo -u ubuntu pm2 delete all >/dev/null 2>&1; ok "pm2 encerrado"
 
   sec "2. Derrubando bancos COM os volumes (dados vão junto)"
-  for d in /opt/alphavip /opt/studio; do
+  for d in /opt/club /opt/studio; do
     [ -d "$d" ] && (cd "$d" && docker compose down -v >/dev/null 2>&1) && ok "compose down -v: $d"
   done
   docker volume prune -f >/dev/null 2>&1 && ok "volumes docker removidos"

@@ -23,6 +23,13 @@ set -uo pipefail
 
 # ── Manifesto ────────────────────────────────────────────────────────────────
 APT_UBUNTU=(nginx restic sshpass zip python3 python3-pip jq curl gnupg ca-certificates)
+# VP-2026-292 (OK direto do André na Segurança, 25/11/2026): edição de vídeo da Criativos e o `transcrever`.
+# ffmpeg do apt; whisper.cpp recompilado do código em /opt/whisper (o build fica fora do restic); o modelo
+# ggml-large-v3-turbo volta do restic e é conferido pelo sha256 abaixo.
+APT_UBUNTU+=(ffmpeg cmake build-essential)
+WHISPER_DIR=/opt/whisper
+WHISPER_TURBO=/opt/whisper/models/ggml-large-v3-turbo.bin
+WHISPER_TURBO_SHA=1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69
 DOCKER_PKGS=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin)
 NPM_GLOBAL=(pm2)
 COMPOSE_DIRS=(/opt/club /opt/studio)                     # docker compose up -d
@@ -50,9 +57,15 @@ have(){ command -v "$1" >/dev/null 2>&1; }
 # ── check (só leitura — seguro em QUALQUER lugar) ────────────────────────────
 do_check(){
   sec "Pacotes"
-  for c in docker nginx node restic sshpass certbot pm2 python3 jq; do
+  for c in docker nginx node restic sshpass certbot pm2 python3 jq ffmpeg; do
     have "$c" && ok "$c ($(command -v $c))" || no "$c FALTA"
   done
+  sec "Whisper (transcrever + edição de vídeo da Criativos)"
+  [ -x "$WHISPER_DIR/build/bin/whisper-cli" ] && ok "whisper-cli compilado" || no "whisper-cli FALTA (rode o provision)"
+  if [ -f "$WHISPER_TURBO" ]; then
+    [ "$(sha256sum "$WHISPER_TURBO" | cut -d' ' -f1)" = "$WHISPER_TURBO_SHA" ] && ok "modelo large-v3-turbo (sha256 confere)" || no "modelo large-v3-turbo com sha256 DIFERENTE"
+  else no "modelo large-v3-turbo ausente (restaure /opt/whisper/models do restic)"; fi
+  [ -f "$WHISPER_DIR/models/ggml-medium.bin" ] || inf "ggml-medium.bin fora do backup: o transcrever usa o turbo com WHISPER_MODEL=$WHISPER_TURBO"
   sec "Repositórios apt (recriáveis pelo provision)"
   for r in docker nodesource crowdsec; do
     ls /etc/apt/sources.list.d/ 2>/dev/null | grep -qi "$r" && ok "$r" || no "$r ausente"
@@ -98,6 +111,14 @@ do_provision(){
   sec "certbot (snap) + pm2 (npm)"
   have snap && { snap install --classic certbot 2>/dev/null && ln -sf /snap/bin/certbot /usr/bin/certbot && ok "certbot"; } || no "snap ausente (certbot manual)"
   npm install -g "${NPM_GLOBAL[@]}" >/dev/null 2>&1 && ok "pm2 $(sudo -u ubuntu pm2 --version 2>/dev/null)" || no "pm2"
+  sec "whisper.cpp (compila do código restaurado em $WHISPER_DIR)"
+  if [ -f "$WHISPER_DIR/CMakeLists.txt" ]; then
+    { cmake -S "$WHISPER_DIR" -B "$WHISPER_DIR/build" -DCMAKE_BUILD_TYPE=Release >/dev/null 2>&1 \
+      && cmake --build "$WHISPER_DIR/build" -j"$(nproc)" --config Release >/dev/null 2>&1 \
+      && [ -x "$WHISPER_DIR/build/bin/whisper-cli" ]; } && ok "whisper-cli compilado" || no "whisper.cpp não compilou (ver cmake em $WHISPER_DIR)"
+  else no "$WHISPER_DIR sem código (restaure primeiro)"; fi
+  if [ -f "$WHISPER_TURBO" ] && [ "$(sha256sum "$WHISPER_TURBO" | cut -d' ' -f1)" = "$WHISPER_TURBO_SHA" ]; then ok "modelo large-v3-turbo confere"
+  else no "modelo large-v3-turbo ausente ou com sha256 diferente: restaure do restic ou baixe do huggingface.co/ggerganov/whisper.cpp e confira"; fi
   inf "CrowdSec: repo packagecloud — instale à parte se quiser as defesas (não bloqueia o resto)"
 }
 
@@ -132,6 +153,19 @@ do_services(){
   done
   sec "docker compose (rebuild + up)"
   for d in "${COMPOSE_DIRS[@]}"; do (cd "$d" && docker compose up -d --build 2>/dev/null) && ok "$d" || no "$d"; done
+  # VP-2026-261 D (OK direto do André na VP, 14/11/2026 19:43 UTC): loja Alence. Imagens locais (sem registro), refeitas do
+  # código em /opt/loja com a TAG do .env; projeto compose "alence". O banco volta do restic (staging/alence-loja.sqlite →
+  # /opt/loja/dados/loja.db, dono 10020, 0600); os vídeos de pedido NÃO têm backup (decisão do André, 14/11).
+  sec "loja Alence"
+  if [ -f /opt/loja/docker-compose.yml ]; then
+    T=$(sed -n 's/^TAG=//p' /opt/loja/.env 2>/dev/null | head -1)
+    install -d -m 0700 -o 10020 -g 10020 /opt/loja/dados /opt/loja/midia /opt/loja/midia/fila /opt/loja/midia/videos
+    if [ ! -f /opt/loja/dados/loja.db ] && [ -f "$STAGE/alence-loja.sqlite" ]; then
+      install -m 0600 -o 10020 -g 10020 "$STAGE/alence-loja.sqlite" /opt/loja/dados/loja.db && ok "banco da loja restaurado do staging"
+    fi
+    { [ -n "$T" ] && docker build -q -t "alence-app:$T" /opt/loja >/dev/null 2>&1 && docker build -q -t "alence-video:1" /opt/loja/video >/dev/null 2>&1; } \
+      && docker compose -p alence -f /opt/loja/docker-compose.yml up -d --no-build >/dev/null 2>&1 && ok "alence (TAG $T)" || no "alence (ver docker compose -p alence logs)"
+  else no "/opt/loja sem compose (restaure primeiro)"; fi
   sec "pm2 (usuário ubuntu)"
   for a in "${PM2_APPS[@]}"; do
     d="/home/ubuntu/$a"
